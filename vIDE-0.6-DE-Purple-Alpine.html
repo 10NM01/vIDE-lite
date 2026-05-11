@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>vIDE Alpine DE (0.6)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<style>
+:root {
+  --bg: #212121;
+  --sidebar: #1f1f1f;
+  --border: #3e3e3e;
+  --text: #ffffff;
+  --muted: #595959;
+  --active: #737070;
+  --accent: #7c4dff;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+header {
+  height: 55px;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+#searchInput {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 8px 20px;
+  color: white;
+  outline: none;
+  width: 450px;
+  font-size: 14px;
+}
+
+#searchInput:focus { border-color: var(--accent); }
+
+main { flex: 1; display: flex; overflow: hidden; }
+
+#fileList {
+  width: 500px;
+  background: var(--sidebar);
+  border-right: 8px solid var(--border);
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.file {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 15px;
+  border-radius: 8px;
+  font-size: 18px;
+  color: var(--muted);
+  cursor: pointer;
+  margin-bottom: 6px;
+}
+
+.file.active {
+  background: var(--border);
+  color: var(--text);
+  border-left: 4px solid var(--accent); 
+}
+
+.editor-container {
+  flex: 1;
+  display: flex;
+  background: #212121;
+  position: relative;
+}
+
+#lineNumbers {
+  width: 40px;
+  padding: 20px 0;
+  text-align: right;
+  color: #616161;
+  font-family: monospace;
+  font-size: 16px;
+  line-height: 1.5;
+  background: #212121;      
+  user-select: none;
+  overflow: hidden;
+}
+
+#editor {
+  flex: 1;
+  background: transparent;
+  color: var(--text);
+  border: none;
+  outline: none;
+  resize: none;
+  padding: 20px;
+  font-family: monospace;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+#editor::selection {
+  background: var(--accent);
+}
+
+header button {
+  background: #3b3b3b;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 6px 14px;
+  cursor: pointer;
+  margin-left: 8px;
+  font-size: 14px;
+}
+
+header button:hover {
+  background: #3f00417b;
+  border-color: var(--muted);
+}
+
+footer {
+  height: 35px;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.close-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0 5px;
+}
+
+.close-btn:hover { color: #ff5f5f; }
+</style>
+</head>
+<body>
+
+<header>
+  <strong>vIDE</strong>
+  <input type="text" id="searchInput" placeholder="Search and press Enter..." onkeydown="if(event.key==='Enter'){ event.preventDefault(); searchCode(); }">
+  <div>
+    <input type="file" id="filePicker" style="display:none" onchange="handleFileImport(this)">
+    <button onclick="document.getElementById('filePicker').click()">Open</button>
+    <button onclick="newFile()">+ File</button>
+    <button onclick="downloadFile()">Download</button>
+  </div>
+</header>
+
+<main>
+  <div id="fileList"></div>
+  <div class="editor-container">
+    <div id="lineNumbers">1</div>
+    <textarea id="editor" spellcheck="false" oninput="handleInput()" onscroll="syncScroll()"></textarea>
+  </div>
+</main>
+
+<footer>vIDE 0.6 Dark Edition (Purple Alpine)</footer>
+
+<script>
+const UNIQUE_ID = window.location.pathname; 
+const STORAGE_KEY = "vIDE_Alpine_" + btoa(UNIQUE_ID).substring(0, 10);
+
+let project = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {
+  files: [{ name: "main.txt", content: "Welcome to vIDE", closed: false }],
+  active: 0
+};
+
+const fileList = document.getElementById("fileList");
+const editor = document.getElementById("editor");
+const lineNumbers = document.getElementById("lineNumbers");
+
+function handleInput() {
+  save();
+  updateLineNumbers();
+}
+
+function syncScroll() {
+  lineNumbers.scrollTop = editor.scrollTop;
+}
+
+function updateLineNumbers() {
+  const lines = editor.value.split('\n').length;
+  lineNumbers.innerHTML = Array.from({length: lines}, (_, i) => i + 1).join('<br>');
+}
+
+function save() {
+  if (project.files[project.active]) {
+    project.files[project.active].content = editor.value;
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(project));
+}
+
+function renderFiles() {
+  fileList.innerHTML = "";
+  project.files.forEach((file, index) => {
+    if (file.closed) return;
+    const div = document.createElement("div");
+    div.className = "file" + (index === project.active ? " active" : "");
+    div.onclick = () => loadFile(index);
+    
+    const nameSpan = document.createElement("span");
+    nameSpan.textContent = file.name;
+    
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "close-btn";
+    closeBtn.innerHTML = "&times;";
+    closeBtn.onclick = (e) => { e.stopPropagation(); closeFile(index); };
+    
+    div.appendChild(nameSpan);
+    div.appendChild(closeBtn);
+    fileList.appendChild(div);
+  });
+}
+
+function loadFile(index) {
+  save();
+  if (index === -1 || !project.files[index]) {
+    editor.value = "";
+    project.active = -1;
+  } else {
+    project.active = index;
+    editor.value = project.files[index].content || "";
+  }
+  renderFiles();
+  updateLineNumbers();
+}
+
+function closeFile(index) {
+  project.files[index].closed = true;
+  const nextIdx = project.files.findIndex(f => !f.closed);
+  loadFile(nextIdx);
+}
+
+function newFile() {
+  const name = prompt("File name:");
+  if (!name) return;
+  project.files.push({ name, content: "", closed: false });
+  loadFile(project.files.length - 1);
+}
+
+function handleFileImport(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    project.files.push({ name: file.name, content: e.target.result, closed: false });
+    loadFile(project.files.length - 1);
+  };
+  reader.readAsText(file);
+}
+
+function downloadFile() {
+  if (project.active === -1) return;
+  const file = project.files[project.active];
+  const blob = new Blob([file.content], { type: "text/plain" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = file.name;
+  a.click();
+}
+
+function searchCode() {
+  const query = document.getElementById("searchInput").value.toLowerCase();
+  if (!query) return;
+  const content = editor.value.toLowerCase();
+  const index = content.indexOf(query);
+  if (index !== -1) {
+    editor.focus();
+    editor.setSelectionRange(index, index + query.length);
+  }
+}
+
+renderFiles();
+loadFile(project.active);
+</script>
+</body>
+</html>
